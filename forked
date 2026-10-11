@@ -61,16 +61,43 @@ local function Create(class, props, children)
     return o
 end
 
--- every stroke that lights up when Element Glow is on
-Library.GlowStrokes = {}
+-- real glow: a soft accent halo sitting behind the element, not a border
+Library.Glows = {}
+local GLOW_IMAGE = "rbxassetid://112971167999062"
+
+function Library:AddGlow(target, spread, strength)
+    local glow = Instance.new("ImageLabel")
+    glow.BackgroundTransparency = 1
+    glow.Image = GLOW_IMAGE
+    glow.ImageColor3 = self.Theme.Accent
+    glow.ScaleType = Enum.ScaleType.Slice
+    glow.SliceCenter = Rect.new(112, 112, 147, 147)
+    glow.SliceScale = 0.5
+    glow.AnchorPoint = Vector2.new(0.5, 0.5)
+    glow.Position = UDim2.fromScale(0.5, 0.5)
+    glow.Size = UDim2.new(1, spread or 18, 1, spread or 18)
+    glow.ZIndex = (target.ZIndex or 1) - 1
+    glow.ImageTransparency = 1
+    glow.Parent = target.Parent
+    self.Glows[glow] = { target = target, strength = strength or 0.35, lit = false }
+    return glow
+end
+
+function Library:SetGlow(glow, lit)
+    local info = self.Glows[glow]
+    if not info then return end
+    info.lit = lit
+    glow.ImageColor3 = self.Theme.Accent
+    Tween(glow, { ImageTransparency = (lit and self.Glow.Element) and info.strength or 1 }, 0.15)
+end
+
 function Library:ApplyGlow()
-    local on, a = self.Glow.Element, self.Theme.Accent
-    for stroke in self.GlowStrokes do
-        if stroke.Parent then
-            stroke.Color = on and a or self.Theme.Divider
-            stroke.Transparency = on and 0.45 or 0.75
+    for glow, info in self.Glows do
+        if glow.Parent then
+            glow.ImageColor3 = self.Theme.Accent
+            glow.ImageTransparency = (info.lit and self.Glow.Element) and info.strength or 1
         else
-            self.GlowStrokes[stroke] = nil
+            self.Glows[glow] = nil
         end
     end
 end
@@ -426,15 +453,12 @@ end
 -- ═══════════════════════════════════════════════════════════
 -- LOADING SCREEN (BigFroot card, fades in, fills, fades out)
 -- ═══════════════════════════════════════════════════════════
-local function LoadingScreen(title, version, logo, parent)
+local function LoadingScreen(title, version, parent)
     local gui = Create("ScreenGui", { Name = HttpService:GenerateGUID(false), IgnoreGuiInset = true, DisplayOrder = 99999, ZIndexBehavior = Enum.ZIndexBehavior.Sibling, ResetOnSpawn = false, Parent = parent })
     local card = Create("CanvasGroup", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.52), Size = UDim2.fromOffset(300, 116), GroupTransparency = 1, Theme = { BackgroundColor3 = "Panel" }, Parent = gui })
     Corner(card, 10)
-    local lg = Create("ImageLabel", { Position = UDim2.fromOffset(16, 16), Size = UDim2.fromOffset(36, 36), Image = logo or "", Theme = { BackgroundColor3 = "Accent" }, Parent = card })
-    Corner(lg, 8)
-    if not logo then Label({ Size = UDim2.fromScale(1, 1), Text = (title or "Z"):sub(1, 1), FontFace = FONT.Bold, TextSize = 18, TextXAlignment = Enum.TextXAlignment.Center, Theme = { TextColor3 = "TextBright" }, Parent = lg }) end
-    Label({ Position = UDim2.fromOffset(62, 17), Size = UDim2.new(1, -78, 0, 18), Text = title or "Zero Hub", FontFace = FONT.Bold, TextSize = 16, Theme = { TextColor3 = "TextBright" }, Parent = card })
-    Label({ Position = UDim2.fromOffset(62, 35), Size = UDim2.new(1, -78, 0, 14), Text = version or "", FontFace = FONT.Regular, TextSize = 12, Theme = { TextColor3 = "SubText" }, Parent = card })
+    Label({ Position = UDim2.fromOffset(16, 17), Size = UDim2.new(1, -78, 0, 18), Text = title or "Zero Hub", FontFace = FONT.Bold, TextSize = 16, Theme = { TextColor3 = "TextBright" }, Parent = card })
+    Label({ Position = UDim2.fromOffset(16, 35), Size = UDim2.new(1, -78, 0, 14), Text = version or "", FontFace = FONT.Regular, TextSize = 12, Theme = { TextColor3 = "SubText" }, Parent = card })
     local track = Create("Frame", { Position = UDim2.new(0, 16, 1, -40), Size = UDim2.new(1, -32, 0, 4), Theme = { BackgroundColor3 = "Track" }, Parent = card })
     Corner(track, 2)
     local fill = Create("Frame", { Size = UDim2.fromScale(0, 1), Theme = { BackgroundColor3 = "Accent" }, Parent = track })
@@ -481,7 +505,7 @@ function Library:CreateWindow(Config)
     if Config.ToggleKey then self.ToggleKey = Config.ToggleKey end
 
     local parent = GuiParent()
-    if Config.LoadingScreen ~= false then LoadingScreen(Config.Title, Config.Version, Config.Logo, parent) end
+    if Config.LoadingScreen ~= false then LoadingScreen(Config.Title, Config.Version, parent) end
 
     local size = Config.Size or UDim2.fromOffset(760, 540)
     local W = setmetatable({ Categories = {}, Sections = {}, Tabs = {}, Visible = true, Config = Config }, Window)
@@ -519,11 +543,8 @@ function Library:CreateWindow(Config)
     Corner(W.Sidebar, 10)
     Create("Frame", { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 0), Size = UDim2.new(0, 12, 1, 0), BorderSizePixel = 0, Theme = { BackgroundColor3 = "Panel" }, Parent = W.Sidebar })
 
-    local logo = Create("ImageLabel", { Position = UDim2.fromOffset(14, 14), Size = UDim2.fromOffset(36, 36), Image = Config.Logo or "", ScaleType = Enum.ScaleType.Crop, Theme = { BackgroundColor3 = "Accent" }, Parent = W.Sidebar })
-    Corner(logo, 8)
-    if not Config.Logo then Label({ Size = UDim2.fromScale(1, 1), Text = (Config.Title or "Z"):sub(1, 1), FontFace = FONT.Bold, TextSize = 18, TextXAlignment = Enum.TextXAlignment.Center, Theme = { TextColor3 = "TextBright" }, Parent = logo }) end
-    W.TitleLabel = Label({ Position = UDim2.fromOffset(60, 15), Size = UDim2.new(1, -70, 0, 18), Text = Config.Title or "Zero Hub", FontFace = FONT.Bold, TextSize = 16, TextTruncate = Enum.TextTruncate.AtEnd, Theme = { TextColor3 = "TextBright" }, Parent = W.Sidebar })
-    W.VersionLabel = Label({ Position = UDim2.fromOffset(60, 33), Size = UDim2.new(1, -70, 0, 14), Text = Config.Version or "", FontFace = FONT.Regular, TextSize = 12, Theme = { TextColor3 = "SubText" }, Parent = W.Sidebar })
+    W.TitleLabel = Label({ Position = UDim2.fromOffset(14, 15), Size = UDim2.new(1, -24, 0, 18), Text = Config.Title or "Zero Hub", FontFace = FONT.Bold, TextSize = 16, TextTruncate = Enum.TextTruncate.AtEnd, Theme = { TextColor3 = "TextBright" }, Parent = W.Sidebar })
+    W.VersionLabel = Label({ Position = UDim2.fromOffset(14, 33), Size = UDim2.new(1, -70, 0, 14), Text = Config.Version or "", FontFace = FONT.Regular, TextSize = 12, Theme = { TextColor3 = "SubText" }, Parent = W.Sidebar })
 
     W.Nav = Create("ScrollingFrame", {
         Position = UDim2.fromOffset(0, 62), Size = UDim2.new(1, 0, 1, -62 - 58), BackgroundTransparency = 1, BorderSizePixel = 0,
@@ -541,25 +562,7 @@ function Library:CreateWindow(Config)
         local ok, img = pcall(Players.GetUserThumbnailAsync, Players, LocalPlayer.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size48x48)
         if ok then avatar.Image = img end
     end)
-    Label({ Position = UDim2.fromOffset(52, 13), Size = UDim2.new(1, -60, 0, 16), Text = MaskName(LocalPlayer.Name), FontFace = FONT.SemiBold, TextSize = 13, TextTruncate = Enum.TextTruncate.AtEnd, Parent = card })
-    W.ExpiresLabel = Label({ Position = UDim2.fromOffset(52, 30), Size = UDim2.new(1, -60, 0, 14), RichText = true, Text = "", FontFace = FONT.Regular, TextSize = 12, Theme = { TextColor3 = "SubText" }, Parent = card })
-    function W:SetExpires(text)
-        local a = Library.Theme.Accent
-        self.ExpiresLabel.Text = string.format('Expires: <font color="rgb(%d,%d,%d)">%s</font>', a.R * 255, a.G * 255, a.B * 255, text)
-        self.ExpiresText = text
-    end
-    local function keyTime()
-        if Config.Expires then return Config.Expires end
-        local left = rawget(getfenv(0), "LRM_SecondsLeft") or (getgenv().LRM_SecondsLeft)
-        return FormatLeft(tonumber(left))
-    end
-    W:SetExpires(keyTime())
-    task.spawn(function()
-        while W.Gui.Parent do
-            task.wait(30)
-            pcall(function() W:SetExpires(keyTime()) end)
-        end
-    end)
+    Label({ Position = UDim2.fromOffset(52, 21), Size = UDim2.new(1, -60, 0, 16), Text = MaskName(LocalPlayer.Name), FontFace = FONT.SemiBold, TextSize = 13, TextTruncate = Enum.TextTruncate.AtEnd, Parent = card })
 
     -- ── top bar: breadcrumb and search ──
     W.Top = Create("Frame", { Position = UDim2.fromOffset(SIDEBAR, 0), Size = UDim2.new(1, -SIDEBAR, 0, TOPBAR), BackgroundTransparency = 1, Parent = W.Main })
@@ -867,9 +870,7 @@ function Tab:AddGroupbox(Name, iconOverride)
 
     G.Card = Create("Frame", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = self.GroupCount, Theme = { BackgroundColor3 = "Panel" }, Parent = column })
     Corner(G.Card, 8)
-    local cardStroke = Create("UIStroke", { Thickness = 1, Transparency = 0.75, Theme = { Color = "Divider" }, Parent = G.Card })
-    Library.GlowStrokes[cardStroke] = true
-    if Library.Glow.Element then cardStroke.Color, cardStroke.Transparency = Library.Theme.Accent, 0.45 end
+    Create("UIStroke", { Thickness = 1, Transparency = 0.75, Theme = { Color = "Divider" }, Parent = G.Card })
 
     local head = Create("TextButton", { Size = UDim2.new(1, 0, 0, 38), BackgroundTransparency = 1, AutoButtonColor = false, Text = "", Parent = G.Card })
     Create("ImageLabel", { Position = UDim2.fromOffset(14, 11), Size = UDim2.fromOffset(16, 16), BackgroundTransparency = 1, Image = Icon(iconOverride or GroupIcon(Name)), Theme = { ImageColor3 = "Accent" }, Parent = head })
@@ -924,6 +925,8 @@ function Groupbox:AddToggle(Flag, Options)
     local box = Create("Frame", { AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.fromScale(0, 0.5), Size = UDim2.fromOffset(18, 18), Theme = { BackgroundColor3 = "Element" }, Parent = top })
     Corner(box, 5)
     local stroke = Create("UIStroke", { Thickness = 1, Transparency = 0.3, Theme = { Color = "Divider" }, Parent = box })
+    box.ZIndex = 2
+    local boxGlow = Library:AddGlow(box, 16, 0.3)
     local check = Create("ImageLabel", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(13, 13), BackgroundTransparency = 1, ImageTransparency = 1, Image = Icon("check"), ImageColor3 = Color3.new(1, 1, 1), Parent = box })
     Label({ Position = UDim2.fromOffset(26, 0), Size = UDim2.new(1, -26, 1, 0), Text = Options.Text or Flag, FontFace = FONT.Medium, TextSize = 13, Theme = { TextColor3 = "Text" }, Parent = top })
 
@@ -939,10 +942,12 @@ function Groupbox:AddToggle(Flag, Options)
             Tween(box, { BackgroundColor3 = Library.Theme.Accent }, 0.15)
             Tween(check, { ImageTransparency = 0 }, 0.15)
             stroke.Transparency = 1
+            Library:SetGlow(boxGlow, true)
         else
             Tween(box, { BackgroundColor3 = Library.Theme.Element }, 0.15)
             Tween(check, { ImageTransparency = 1 }, 0.15)
             stroke.Transparency = 0.3
+            Library:SetGlow(boxGlow, false)
         end
         if Options.Callback then pcall(Options.Callback, self.Value) end
         for _, cb in self.Callbacks do pcall(cb, self.Value) end
@@ -984,8 +989,16 @@ function Groupbox:AddSlider(Flag, Options)
     Corner(track, 3)
     local fill = Create("Frame", { Size = UDim2.fromScale(0, 1), Theme = { BackgroundColor3 = "Accent" }, Parent = track })
     Corner(fill, 3)
-    local knob = Create("Frame", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0, 0.5), Size = UDim2.fromOffset(14, 14), Theme = { BackgroundColor3 = "Knob" }, ZIndex = 2, Parent = track })
+    fill.ZIndex = 2
+    local fillGlow = Library:AddGlow(fill, 14, 0.3)
+    fillGlow.Parent = track
+    local knob = Create("Frame", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0, 0.5), Size = UDim2.fromOffset(14, 14), Theme = { BackgroundColor3 = "Knob" }, ZIndex = 3, Parent = track })
     Corner(knob, 7)
+    local knobGlow = Library:AddGlow(knob, 18, 0.35)
+    knobGlow.Parent = track
+    knobGlow.AnchorPoint = Vector2.new(0.5, 0.5)
+    Library:SetGlow(fillGlow, true)
+    Library:SetGlow(knobGlow, true)
 
     if hasDesc then AddDesc(holder, Options.Description, 32) end
 
@@ -997,6 +1010,10 @@ function Groupbox:AddSlider(Flag, Options)
         local alpha = (max - min) == 0 and 0 or (v - min) / (max - min)
         fill.Size = UDim2.fromScale(alpha, 1)
         knob.Position = UDim2.fromScale(alpha, 0.5)
+        fillGlow.Size = UDim2.new(alpha, 14, 1, 14)
+        fillGlow.Position = UDim2.fromScale(alpha / 2, 0.5)
+        knobGlow.Position = UDim2.fromScale(alpha, 0.5)
+        knobGlow.Size = UDim2.fromOffset(32, 32)
         valueLbl.Text = (decimals == 0 and tostring(math.floor(v)) or string.format("%." .. decimals .. "f", v)) .. suffix
         if not skip then
             if Options.Callback then pcall(Options.Callback, v) end
