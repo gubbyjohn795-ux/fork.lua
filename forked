@@ -758,6 +758,7 @@ local FontOk, Inter = pcall(LoadCustomFont, "InterSemiBold", "https://raw.github
 local InterSemiBold = FontOk and Inter or Font.new("rbxasset://fonts/families/GothamSSm.json", Enum.FontWeight.SemiBold)
 local InterBold = Font.new("rbxasset://fonts/families/GothamSSm.json", Enum.FontWeight.Bold)
 local InterMedium = Font.new("rbxasset://fonts/families/GothamSSm.json", Enum.FontWeight.Medium)
+local InterRegular = Font.new("rbxasset://fonts/families/GothamSSm.json", Enum.FontWeight.Regular)
 
 Library.Font = InterSemiBold
 
@@ -2338,6 +2339,7 @@ function Groupbox:AddToggle(Flag, Options)
     Toggle.Callback = Options.Callback
     Toggle.Holder = Holder
     Toggle.Window = self.Window
+    Toggle.Groupbox = self
 
     local function Visual()
         local AccBrightness = Theme.Accent.R * 0.299 + Theme.Accent.G * 0.587 + Theme.Accent.B * 0.114
@@ -2403,9 +2405,10 @@ function Groupbox:AddToggle(Flag, Options)
     end
 
     function Toggle:AddSub()
+        local GB = self.Groupbox
         local Reveal = Create("Frame", {
             Name = "DependBox",
-            Parent = self.Container,
+            Parent = GB.Container,
             BorderSizePixel = 0,
             BackgroundTransparency = 1,
             ClipsDescendants = true,
@@ -2425,9 +2428,9 @@ function Groupbox:AddToggle(Flag, Options)
         Create("UIPadding", { PaddingLeft = UDim.new(0, 6), Parent = Inner })
 
         local Sub = setmetatable({
-            Window = self.Window, Tab = self.Tab, Container = Inner,
+            Window = GB.Window, Tab = GB.Tab, Container = Inner,
             Box = Reveal, Collapsed = false, Name = (Options.Text or "Toggle") .. " Options",
-        }, getmetatable(self))
+        }, getmetatable(GB))
 
         local function Refresh(animate)
             if Toggle.Value then
