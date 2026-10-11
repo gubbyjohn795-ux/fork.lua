@@ -288,7 +288,7 @@ do
     end
 
     local function probe_hooks(on_trip)
-        return -- disabled: executors legitimately wrap core globals (false positives)
+        do return end -- disabled: executors legitimately wrap core globals (false positives)
         if _v0x9c then
             local function must_be_clean(fn, label)
                 if not fn then return end
