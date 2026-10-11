@@ -61,6 +61,20 @@ local function Create(class, props, children)
     return o
 end
 
+-- every stroke that lights up when Element Glow is on
+Library.GlowStrokes = {}
+function Library:ApplyGlow()
+    local on, a = self.Glow.Element, self.Theme.Accent
+    for stroke in self.GlowStrokes do
+        if stroke.Parent then
+            stroke.Color = on and a or self.Theme.Divider
+            stroke.Transparency = on and 0.45 or 0.75
+        else
+            self.GlowStrokes[stroke] = nil
+        end
+    end
+end
+
 local function Corner(o, r) return Create("UICorner", { CornerRadius = UDim.new(0, r or 6), Parent = o }) end
 local function Pad(o, l, r, t, b)
     return Create("UIPadding", { PaddingLeft = UDim.new(0, l or 0), PaddingRight = UDim.new(0, r or l or 0), PaddingTop = UDim.new(0, t or l or 0), PaddingBottom = UDim.new(0, b or t or l or 0), Parent = o })
@@ -380,6 +394,7 @@ function Library:ApplyTheme(theme)
             self.Registry[obj] = nil
         end
     end
+    if self.ApplyGlow then self:ApplyGlow() end
     if self.OnThemeChanged then pcall(self.OnThemeChanged) end
 end
 
@@ -608,7 +623,7 @@ function Library:CreateWindow(Config)
             self.Main.Position = UDim2.new(home.X.Scale, home.X.Offset, 1, self.Main.AbsoluteSize.Y)
             Tween(self.Main, { Position = home, GroupTransparency = 0 }, 0.45, Enum.EasingStyle.Quint)
             Tween(self.Shadow, { ImageTransparency = 0.45 }, 0.45)
-            Tween(self.Glow, { ImageTransparency = Library.Glow.Window and 0.55 or 1 }, 0.45)
+            Tween(self.Glow, { ImageTransparency = Library.Glow.Window and 0.25 or 1 }, 0.45)
         else
             self.HomePos = self.Main.Position
             Tween(self.Main, { Position = UDim2.new(home.X.Scale, home.X.Offset, 1, self.Main.AbsoluteSize.Y), GroupTransparency = 1 }, 0.4, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
@@ -699,10 +714,21 @@ local NAV_ICONS = {
 local function NavIcon(name) return NAV_ICONS[(name or ""):lower()] or "layout-dashboard" end
 
 function Window:AddCategory(Name)
-    -- a category is a sidebar group header plus the tabs under it
-    local header = Label({ Size = UDim2.new(1, 0, 0, 24), Text = Name, FontFace = FONT.Medium, TextSize = 12, LayoutOrder = #self.Categories * 100, Theme = { TextColor3 = "SubText" }, Parent = self.Nav })
-    Pad(header, 14, 0, 6, 2)
-    local C = setmetatable({ Window = self, Name = Name, Tabs = {}, Order = #self.Categories * 100 }, Category)
+    -- a sidebar group: a clickable header with a chevron, and the tabs under it
+    local C = setmetatable({ Window = self, Name = Name, Tabs = {}, Rows = {}, Order = #self.Categories * 100, Collapsed = false }, Category)
+
+    local head = Create("TextButton", { Size = UDim2.new(1, 0, 0, 26), BackgroundTransparency = 1, AutoButtonColor = false, Text = "", LayoutOrder = C.Order, Parent = self.Nav })
+    Label({ Position = UDim2.fromOffset(14, 0), Size = UDim2.new(1, -40, 1, 0), Text = Name, FontFace = FONT.Medium, TextSize = 12, Theme = { TextColor3 = "SubText" }, Parent = head })
+    local chev = Create("ImageLabel", { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -12, 0.5, 0), Size = UDim2.fromOffset(14, 14), BackgroundTransparency = 1, Image = Icon("chevron-down"), Theme = { ImageColor3 = "SubText" }, Parent = head })
+    C.Header, C.Chevron = head, chev
+
+    function C:SetCollapsed(state)
+        self.Collapsed = state
+        for _, row in self.Rows do row.Visible = not state end
+        Tween(chev, { Rotation = state and -90 or 0 }, 0.18)
+    end
+    Connect(head.MouseButton1Click, function() C:SetCollapsed(not C.Collapsed) end)
+
     table.insert(self.Categories, C)
     return C
 end
@@ -722,9 +748,9 @@ function Category:AddTab(Name, iconOverride)
         ScrollBarThickness = 3, ScrollBarImageColor3 = Color3.fromRGB(60, 60, 70), ScrollBarImageTransparency = 0.4,
         CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y, Parent = W.Content,
     })
-    Pad(page, 14, 14, 14, 14)
-    -- two columns of groupboxes, like BigFroot
-    local cols = Create("Frame", { Size = UDim2.fromScale(1, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1, Parent = page })
+    Pad(page, 0, 0, 0, 14)
+    -- two columns of groupboxes, like BigFroot. sized in offsets so nothing runs past the window edge
+    local cols = Create("Frame", { Position = UDim2.fromOffset(14, 14), Size = UDim2.new(1, -32, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1, Parent = page })
     List(cols, 12, Enum.FillDirection.Horizontal)
     local left = Create("Frame", { Size = UDim2.new(0.5, -6, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1, LayoutOrder = 1, Parent = cols })
     local right = Create("Frame", { Size = UDim2.new(0.5, -6, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1, LayoutOrder = 2, Parent = cols })
@@ -736,6 +762,7 @@ function Category:AddTab(Name, iconOverride)
         Columns = { left, right }, GroupCount = 0, Groupboxes = {},
     }, Tab)
     table.insert(self.Tabs, T)
+    table.insert(self.Rows, row)
     table.insert(W.Tabs, T)
 
     Connect(row.MouseEnter, function() if W.ActiveTab ~= T then Tween(text, { TextColor3 = Library.Theme.Text }, 0.12) end end)
@@ -768,7 +795,6 @@ function Tab:Select()
     W.Crumb.Text = string.format('<font color="rgb(%d,%d,%d)">%s</font>  ›  %s', a.R * 255, a.G * 255, a.B * 255, self.Category.Name, self.Name)
 
     -- fade the page in
-    local group = Create("CanvasGroup", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, GroupTransparency = 1, Parent = nil })
     FadeInPage(self.Page)
 end
 
@@ -784,8 +810,6 @@ function FadeInPage(page)
         end
     end
 end
-
-function Category:SetCollapsed() end -- BigFroot keeps groups open; kept for API parity
 
 -- the next group goes in whichever column is shorter, so the two columns stay even
 function Tab:NextColumn()
@@ -843,7 +867,9 @@ function Tab:AddGroupbox(Name, iconOverride)
 
     G.Card = Create("Frame", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = self.GroupCount, Theme = { BackgroundColor3 = "Panel" }, Parent = column })
     Corner(G.Card, 8)
-    Create("UIStroke", { Thickness = 1, Transparency = 0.5, Theme = { Color = "Divider" }, Parent = G.Card })
+    local cardStroke = Create("UIStroke", { Thickness = 1, Transparency = 0.75, Theme = { Color = "Divider" }, Parent = G.Card })
+    Library.GlowStrokes[cardStroke] = true
+    if Library.Glow.Element then cardStroke.Color, cardStroke.Transparency = Library.Theme.Accent, 0.45 end
 
     local head = Create("TextButton", { Size = UDim2.new(1, 0, 0, 38), BackgroundTransparency = 1, AutoButtonColor = false, Text = "", Parent = G.Card })
     Create("ImageLabel", { Position = UDim2.fromOffset(14, 11), Size = UDim2.fromOffset(16, 16), BackgroundTransparency = 1, Image = Icon(iconOverride or GroupIcon(Name)), Theme = { ImageColor3 = "Accent" }, Parent = head })
@@ -1414,8 +1440,8 @@ function Library:CreateSettingsTab(W)
     -- Theme
     local th = tab:AddGroupbox("Theme", "palette")
     th:AddDropdown("_ZeroTheme", { Text = "Preset", Values = Library.PresetNames, Default = Library.ThemeName, Callback = function(v) Library:ApplyTheme(v) end })
-    th:AddToggle("_ZeroWindowGlow", { Text = "Window Glow", Default = false, Callback = function(v) Library.Glow.Window = v; if W.Glow then W.Glow.ImageTransparency = v and 0.55 or 1 end end })
-    th:AddToggle("_ZeroElementGlow", { Text = "Element Glow", Default = true, Callback = function(v) Library.Glow.Element = v end })
+    th:AddToggle("_ZeroWindowGlow", { Text = "Window Glow", Default = false, Callback = function(v) Library.Glow.Window = v; if W.Glow then Tween(W.Glow, { ImageTransparency = v and 0.25 or 1 }, 0.2) end end })
+    th:AddToggle("_ZeroElementGlow", { Text = "Element Glow", Default = true, Callback = function(v) Library.Glow.Element = v; Library:ApplyGlow() end })
     th:AddSlider("_ZeroCardOpacity", { Text = "Card Opacity", Min = 0.3, Max = 1, Default = 1, Decimals = 2, Callback = function(v)
         Library.Opacity.Card = v
         for obj, props in Library.Registry do if props.BackgroundColor3 == "Panel" and obj.Parent then obj.BackgroundTransparency = 1 - v end end
